@@ -19,7 +19,6 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: transparent;
     }
 
     a-scene {
@@ -38,13 +37,10 @@
     mindar-image="imageTargetSrc: targets.mind;"
     embedded
     color-space="sRGB"
-    renderer="colorManagement: true; alpha: true;"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false">
 
-    <!-- =========================
-         透過VP9 WebM
-    ========================== -->
+    <!-- 動画 -->
     <a-assets>
 
       <video
@@ -59,18 +55,14 @@
     </a-assets>
 
 
-    <!-- =========================
-         カメラ
-    ========================== -->
+    <!-- カメラ -->
     <a-camera
       position="0 0 0"
       look-controls="enabled: false">
     </a-camera>
 
 
-    <!-- =========================
-         画像認識
-    ========================== -->
+    <!-- ARターゲット -->
     <a-entity mindar-image-target="targetIndex: 0">
 
       <a-video
@@ -79,12 +71,7 @@
         width="1"
         height="1.7778"
         position="0 0 0"
-        material="
-          shader: flat;
-          transparent: true;
-          alphaTest: 0.01;
-          side: double;
-        ">
+        material="shader: flat; transparent: true;">
       </a-video>
 
     </a-entity>
@@ -96,59 +83,49 @@
 
     const video = document.querySelector("#demoVideo");
     const teacherVideo = document.querySelector("#teacherVideo");
-    const scene = document.querySelector("a-scene");
-
 
     // ========================================
-    // 動画テクスチャ読み込み後に透明設定
+    // 動画テクスチャ読み込み
     // ========================================
 
     teacherVideo.addEventListener("materialtextureloaded", () => {
 
+      console.log("動画テクスチャ読み込み完了");
+
       const mesh = teacherVideo.getObject3D("mesh");
 
-      if (!mesh) return;
+      if (mesh && mesh.material) {
 
-      const material = mesh.material;
-
-      if (material) {
-
-        material.transparent = true;
-
-        // 半透明部分を表示
-        material.alphaTest = 0.01;
-
-        // 透明部分が深度を書き込まないようにする
-        material.depthWrite = false;
-
-        material.needsUpdate = true;
+        mesh.material.transparent = true;
+        mesh.material.depthWrite = false;
+        mesh.material.needsUpdate = true;
 
       }
-
-      console.log("透過動画テクスチャ読み込み完了");
 
     });
 
 
     // ========================================
-    // ターゲットを認識
+    // ターゲット認識
     // ========================================
 
     const target = document.querySelector(
       '[mindar-image-target="targetIndex: 0"]'
     );
 
-
     target.addEventListener("targetFound", () => {
 
-      console.log("先生の写真を認識しました");
+      console.log("ターゲット認識");
 
       video.currentTime = 0;
 
-      // 自動再生を試す
-      video.play().catch((error) => {
+      video.play().then(() => {
 
-        console.log("自動再生できませんでした:", error);
+        console.log("動画再生開始");
+
+      }).catch((error) => {
+
+        console.log("再生エラー:", error);
 
       });
 
@@ -156,49 +133,41 @@
 
 
     // ========================================
-    // ターゲットを見失った
+    // タップで再生
     // ========================================
 
-    target.addEventListener("targetLost", () => {
+    document.body.addEventListener("click", async () => {
 
-      console.log("ターゲットを見失いました");
+      try {
 
-      // 必要ならここで一時停止
-      // video.pause();
+        await video.play();
+
+        console.log("タップによる動画再生");
+
+      } catch (error) {
+
+        console.log("再生できません:", error);
+
+      }
 
     });
 
 
-    // ========================================
-    // タップで音声付き再生
-    // ========================================
-
-    async function startVideo() {
+    document.body.addEventListener("touchstart", async () => {
 
       try {
 
-        video.muted = false;
-
         await video.play();
 
-        console.log("動画再生開始");
+        console.log("タッチによる動画再生");
 
       } catch (error) {
 
-        console.log("動画再生エラー:", error);
+        console.log("再生できません:", error);
 
       }
 
-    }
-
-
-    // PC
-    document.body.addEventListener("click", startVideo);
-
-
-    // スマホ
-    document.body.addEventListener("touchstart", startVideo);
-
+    });
 
   </script>
 
