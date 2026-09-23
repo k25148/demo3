@@ -14,6 +14,7 @@
 
 
   <style>
+
     html, body {
       margin: 0;
       padding: 0;
@@ -27,23 +28,28 @@
       position: fixed !important;
       top: 0;
       left: 0;
+
       width: 100% !important;
       height: 100% !important;
     }
+
   </style>
 
 
-  <!-- =========================================
-       Alpha Video用A-Frameコンポーネント
-  ========================================== -->
+  <!-- ==================================================
+       白背景を透明にするカスタムコンポーネント
+  =================================================== -->
+
   <script>
 
-    AFRAME.registerComponent("alpha-video", {
+    AFRAME.registerComponent("white-transparent-video", {
 
       schema: {
+
         src: {
           type: "selector"
         }
+
       },
 
 
@@ -52,87 +58,227 @@
         const el = this.el;
         const video = this.data.src;
 
-        console.log("Alpha Video component 初期化");
+
+        console.log("白背景透明化Video初期化");
 
 
-        // -----------------------------------------
-        // Three.js VideoTexture
-        // -----------------------------------------
+        // =================================================
+        // VideoTexture
+        // =================================================
 
-        const texture = new THREE.VideoTexture(video);
+        const texture =
+          new THREE.VideoTexture(video);
 
-        texture.minFilter = THREE.LinearFilter;
-        texture.magFilter = THREE.LinearFilter;
+
+        texture.minFilter =
+          THREE.LinearFilter;
+
+        texture.magFilter =
+          THREE.LinearFilter;
 
         texture.generateMipmaps = false;
 
 
-        // A-Frame / Three.jsのバージョンによって
-        // colorSpaceの指定方法が異なるため両方に対応
-
+        // sRGB対応
         if ("colorSpace" in texture) {
 
           if (THREE.SRGBColorSpace !== undefined) {
-            texture.colorSpace = THREE.SRGBColorSpace;
+
+            texture.colorSpace =
+              THREE.SRGBColorSpace;
+
           }
 
         }
 
 
-        // -----------------------------------------
-        // Plane Geometry
-        // -----------------------------------------
+        // =================================================
+        // Shader
+        // =================================================
 
-        const geometry = new THREE.PlaneGeometry(
-          1,
-          1.7778
+        const vertexShader = `
+
+          varying vec2 vUv;
+
+          void main() {
+
+            vUv = uv;
+
+            gl_Position =
+              projectionMatrix *
+              modelViewMatrix *
+              vec4(position, 1.0);
+
+          }
+
+        `;
+
+
+        const fragmentShader = `
+
+          uniform sampler2D uVideo;
+
+          // 白と判定する境界
+          uniform float uThreshold;
+
+          // 境界を滑らかにする範囲
+          uniform float uSoftness;
+
+          varying vec2 vUv;
+
+
+          void main() {
+
+            // 動画の色を取得
+            vec4 color =
+              texture2D(uVideo, vUv);
+
+
+            // -----------------------------------------
+            // 白さを判定
+            //
+            // R,G,Bすべてが高いほど「白」
+            // minを使うことで、
+            // 赤や肌色などの色は残しやすくする
+            // -----------------------------------------
+
+            float whiteness =
+              min(
+                color.r,
+                min(color.g, color.b)
+              );
+
+
+            // -----------------------------------------
+            // 白 → 透明
+            // 色のある部分 → 不透明
+            // -----------------------------------------
+
+            float alpha =
+              1.0 - smoothstep(
+                uThreshold - uSoftness,
+                uThreshold + uSoftness,
+                whiteness
+              );
+
+
+            // 完全に透明なら描画しない
+            if (alpha < 0.01) {
+
+              discard;
+
+            }
+
+
+            gl_FragColor =
+              vec4(
+                color.rgb,
+                alpha
+              );
+
+          }
+
+        `;
+
+
+        // =================================================
+        // ShaderMaterial
+        // =================================================
+
+        const material =
+          new THREE.ShaderMaterial({
+
+            uniforms: {
+
+              uVideo: {
+                value: texture
+              },
+
+              // -----------------------------------------
+              // 白判定の強さ
+              // -----------------------------------------
+              //
+              // 数値を下げる
+              // → 少し暗い白も透明になる
+              //
+              // 数値を上げる
+              // → 真っ白だけ透明になる
+              //
+
+              uThreshold: {
+                value: 0.90
+              },
+
+
+              // -----------------------------------------
+              // 境界の滑らかさ
+              // -----------------------------------------
+
+              uSoftness: {
+                value: 0.08
+              }
+
+            },
+
+
+            vertexShader:
+              vertexShader,
+
+            fragmentShader:
+              fragmentShader,
+
+
+            transparent: true,
+
+            depthWrite: false,
+
+            depthTest: true,
+
+            side: THREE.DoubleSide
+
+          });
+
+
+        // =================================================
+        // Plane
+        // =================================================
+
+        const geometry =
+          new THREE.PlaneGeometry(
+            1,
+            1.7778
+          );
+
+
+        const mesh =
+          new THREE.Mesh(
+            geometry,
+            material
+          );
+
+
+        // 透明動画を前面に出す
+        mesh.renderOrder = 10;
+
+
+        // A-Frameに登録
+        el.setObject3D(
+          "mesh",
+          mesh
         );
 
 
-        // -----------------------------------------
-        // Alpha対応マテリアル
-        // -----------------------------------------
-
-        const material = new THREE.MeshBasicMaterial({
-
-          map: texture,
-
-          transparent: true,
-
-          opacity: 1,
-
-          depthWrite: false,
-
-          depthTest: true,
-
-          side: THREE.DoubleSide
-
-        });
-
-
-        // -----------------------------------------
-        // Mesh
-        // -----------------------------------------
-
-        const mesh = new THREE.Mesh(
-          geometry,
-          material
-        );
-
-
-        // A-Frameの3Dオブジェクトとして登録
-
-        el.setObject3D("mesh", mesh);
-
-
-        // 後で参照できるように保存
-
+        // 保存
         this.texture = texture;
+
         this.material = material;
+
         this.mesh = mesh;
 
 
-        console.log("Alpha Video Mesh 作成完了");
+        console.log(
+          "白背景透明化Mesh作成完了"
+        );
 
       },
 
@@ -140,18 +286,29 @@
       remove: function () {
 
         if (this.texture) {
+
           this.texture.dispose();
+
         }
+
 
         if (this.material) {
+
           this.material.dispose();
+
         }
+
 
         if (this.mesh) {
+
           this.mesh.geometry.dispose();
+
         }
 
-        this.el.removeObject3D("mesh");
+
+        this.el.removeObject3D(
+          "mesh"
+        );
 
       }
 
@@ -165,64 +322,86 @@
 <body>
 
 
-  <!-- =========================================
+  <!-- ==================================================
        AR Scene
-  ========================================== -->
+  =================================================== -->
 
   <a-scene
+
     mindar-image="imageTargetSrc: targets.mind;"
+
     embedded
+
     color-space="sRGB"
+
     vr-mode-ui="enabled: false"
+
     device-orientation-permission-ui="enabled: false">
 
 
-    <!-- =======================================
+    <!-- ==================================================
          動画
-    ======================================== -->
+    =================================================== -->
 
     <a-assets>
 
       <video
+
         id="demoVideo"
+
         src="demo_alpha.webm"
+
         preload="auto"
+
         loop
+
         playsinline
+
         webkit-playsinline
+
         muted>
+
       </video>
 
     </a-assets>
 
 
-    <!-- =======================================
+    <!-- ==================================================
          カメラ
-    ======================================== -->
+    =================================================== -->
 
     <a-camera
+
       position="0 0 0"
+
       look-controls="enabled: false">
+
     </a-camera>
 
 
-    <!-- =======================================
-         MindAR画像認識
-    ======================================== -->
+    <!-- ==================================================
+         MindAR Target
+    =================================================== -->
 
     <a-entity
+
       id="target"
+
       mindar-image-target="targetIndex: 0">
 
 
-      <!-- =====================================
-           透過動画
-      ====================================== -->
+      <!-- ==================================================
+           白背景透明化動画
+      ================================================== -->
 
       <a-entity
+
         id="teacherVideo"
-        alpha-video="src: #demoVideo"
+
+        white-transparent-video="src: #demoVideo"
+
         position="0 0 0">
+
       </a-entity>
 
 
@@ -233,76 +412,93 @@
 
 
 
-  <!-- =========================================
+  <!-- ==================================================
        JavaScript
-  ========================================== -->
+  =================================================== -->
 
   <script>
+
 
     const video =
       document.querySelector("#demoVideo");
 
+
     const target =
       document.querySelector("#target");
 
-    const teacherVideo =
-      document.querySelector("#teacherVideo");
+
+    // =================================================
+    // ターゲット発見
+    // =================================================
+
+    target.addEventListener(
+      "targetFound",
+      () => {
+
+        console.log(
+          "先生の写真を認識しました"
+        );
 
 
-    // =========================================
-    // ターゲット認識
-    // =========================================
+        // 動画を最初に戻す
 
-    target.addEventListener("targetFound", () => {
-
-      console.log("先生の写真を認識しました");
-
-      // 動画を最初から
-      video.currentTime = 0;
+        video.currentTime = 0;
 
 
-      // まずミュート状態で再生
-      // スマホの自動再生制限対策
+        // ---------------------------------------------
+        // 最初はミュート
+        // スマホの自動再生対策
+        // ---------------------------------------------
 
-      video.muted = true;
-
-
-      video.play()
-        .then(() => {
-
-          console.log("透過動画 再生開始");
-
-        })
-        .catch((error) => {
-
-          console.log(
-            "動画自動再生エラー:",
-            error
-          );
-
-        });
-
-    });
+        video.muted = true;
 
 
-    // =========================================
+        video.play()
+
+          .then(() => {
+
+            console.log(
+              "透過動画 再生開始"
+            );
+
+          })
+
+          .catch((error) => {
+
+            console.log(
+              "自動再生エラー:",
+              error
+            );
+
+          });
+
+      }
+    );
+
+
+    // =================================================
     // ターゲットを見失った
-    // =========================================
+    // =================================================
 
-    target.addEventListener("targetLost", () => {
+    target.addEventListener(
+      "targetLost",
+      () => {
 
-      console.log("ターゲットを見失いました");
+        console.log(
+          "ターゲットを見失いました"
+        );
 
-      // 必要なら停止
-      // video.pause();
+        // 必要なら停止
+        // video.pause();
 
-    });
+      }
+    );
 
 
-    // =========================================
+    // =================================================
     // 画面タップ
-    // 音声をONにして再生
-    // =========================================
+    // 音声ON
+    // =================================================
 
     let soundEnabled = false;
 
@@ -317,7 +513,10 @@
 
         soundEnabled = true;
 
-        console.log("音声付き動画再生");
+
+        console.log(
+          "音声付き動画再生"
+        );
 
       }
 
@@ -334,16 +533,16 @@
 
 
     // PC
-
     document.body.addEventListener(
       "click",
       enableSound,
-      { once: true }
+      {
+        once: true
+      }
     );
 
 
     // スマホ
-
     document.body.addEventListener(
       "touchstart",
       enableSound,
@@ -354,9 +553,9 @@
     );
 
 
-    // =========================================
-    // 動画の状態確認
-    // =========================================
+    // =================================================
+    // 動画読み込み確認
+    // =================================================
 
     video.addEventListener(
       "loadeddata",
@@ -377,6 +576,10 @@
     );
 
 
+    // =================================================
+    // 動画エラー
+    // =================================================
+
     video.addEventListener(
       "error",
       () => {
@@ -390,9 +593,9 @@
     );
 
 
-    // =========================================
-    // AR Scene読み込み完了
-    // =========================================
+    // =================================================
+    // Scene読み込み
+    // =================================================
 
     const scene =
       document.querySelector("a-scene");
@@ -408,6 +611,7 @@
 
       }
     );
+
 
   </script>
 
