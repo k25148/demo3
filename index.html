@@ -4,34 +4,412 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>WebM Alpha Test</title>
+  <title>demotopassAR</title>
+
+  <!-- A-Frame -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+  <!-- MindAR -->
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
 
   <style>
     html, body {
       margin: 0;
+      padding: 0;
       width: 100%;
       height: 100%;
-      background: #333;
       overflow: hidden;
+      background: transparent;
     }
 
-    video {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
+    a-scene {
+      position: fixed !important;
+      top: 0;
+      left: 0;
+      width: 100% !important;
+      height: 100% !important;
     }
   </style>
+
+
+  <!-- =========================================
+       Alpha Video用A-Frameコンポーネント
+  ========================================== -->
+  <script>
+
+    AFRAME.registerComponent("alpha-video", {
+
+      schema: {
+        src: {
+          type: "selector"
+        }
+      },
+
+
+      init: function () {
+
+        const el = this.el;
+        const video = this.data.src;
+
+        console.log("Alpha Video component 初期化");
+
+
+        // -----------------------------------------
+        // Three.js VideoTexture
+        // -----------------------------------------
+
+        const texture = new THREE.VideoTexture(video);
+
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+
+        texture.generateMipmaps = false;
+
+
+        // A-Frame / Three.jsのバージョンによって
+        // colorSpaceの指定方法が異なるため両方に対応
+
+        if ("colorSpace" in texture) {
+
+          if (THREE.SRGBColorSpace !== undefined) {
+            texture.colorSpace = THREE.SRGBColorSpace;
+          }
+
+        }
+
+
+        // -----------------------------------------
+        // Plane Geometry
+        // -----------------------------------------
+
+        const geometry = new THREE.PlaneGeometry(
+          1,
+          1.7778
+        );
+
+
+        // -----------------------------------------
+        // Alpha対応マテリアル
+        // -----------------------------------------
+
+        const material = new THREE.MeshBasicMaterial({
+
+          map: texture,
+
+          transparent: true,
+
+          opacity: 1,
+
+          depthWrite: false,
+
+          depthTest: true,
+
+          side: THREE.DoubleSide
+
+        });
+
+
+        // -----------------------------------------
+        // Mesh
+        // -----------------------------------------
+
+        const mesh = new THREE.Mesh(
+          geometry,
+          material
+        );
+
+
+        // A-Frameの3Dオブジェクトとして登録
+
+        el.setObject3D("mesh", mesh);
+
+
+        // 後で参照できるように保存
+
+        this.texture = texture;
+        this.material = material;
+        this.mesh = mesh;
+
+
+        console.log("Alpha Video Mesh 作成完了");
+
+      },
+
+
+      remove: function () {
+
+        if (this.texture) {
+          this.texture.dispose();
+        }
+
+        if (this.material) {
+          this.material.dispose();
+        }
+
+        if (this.mesh) {
+          this.mesh.geometry.dispose();
+        }
+
+        this.el.removeObject3D("mesh");
+
+      }
+
+    });
+
+  </script>
+
 </head>
+
 
 <body>
 
-  <video
-    src="demo_alpha.webm"
-    autoplay
-    loop
-    muted
-    playsinline>
-  </video>
+
+  <!-- =========================================
+       AR Scene
+  ========================================== -->
+
+  <a-scene
+    mindar-image="imageTargetSrc: targets.mind;"
+    embedded
+    color-space="sRGB"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+
+    <!-- =======================================
+         動画
+    ======================================== -->
+
+    <a-assets>
+
+      <video
+        id="demoVideo"
+        src="demo_alpha.webm"
+        preload="auto"
+        loop
+        playsinline
+        webkit-playsinline
+        muted>
+      </video>
+
+    </a-assets>
+
+
+    <!-- =======================================
+         カメラ
+    ======================================== -->
+
+    <a-camera
+      position="0 0 0"
+      look-controls="enabled: false">
+    </a-camera>
+
+
+    <!-- =======================================
+         MindAR画像認識
+    ======================================== -->
+
+    <a-entity
+      id="target"
+      mindar-image-target="targetIndex: 0">
+
+
+      <!-- =====================================
+           透過動画
+      ====================================== -->
+
+      <a-entity
+        id="teacherVideo"
+        alpha-video="src: #demoVideo"
+        position="0 0 0">
+      </a-entity>
+
+
+    </a-entity>
+
+
+  </a-scene>
+
+
+
+  <!-- =========================================
+       JavaScript
+  ========================================== -->
+
+  <script>
+
+    const video =
+      document.querySelector("#demoVideo");
+
+    const target =
+      document.querySelector("#target");
+
+    const teacherVideo =
+      document.querySelector("#teacherVideo");
+
+
+    // =========================================
+    // ターゲット認識
+    // =========================================
+
+    target.addEventListener("targetFound", () => {
+
+      console.log("先生の写真を認識しました");
+
+      // 動画を最初から
+      video.currentTime = 0;
+
+
+      // まずミュート状態で再生
+      // スマホの自動再生制限対策
+
+      video.muted = true;
+
+
+      video.play()
+        .then(() => {
+
+          console.log("透過動画 再生開始");
+
+        })
+        .catch((error) => {
+
+          console.log(
+            "動画自動再生エラー:",
+            error
+          );
+
+        });
+
+    });
+
+
+    // =========================================
+    // ターゲットを見失った
+    // =========================================
+
+    target.addEventListener("targetLost", () => {
+
+      console.log("ターゲットを見失いました");
+
+      // 必要なら停止
+      // video.pause();
+
+    });
+
+
+    // =========================================
+    // 画面タップ
+    // 音声をONにして再生
+    // =========================================
+
+    let soundEnabled = false;
+
+
+    async function enableSound() {
+
+      try {
+
+        video.muted = false;
+
+        await video.play();
+
+        soundEnabled = true;
+
+        console.log("音声付き動画再生");
+
+      }
+
+      catch (error) {
+
+        console.log(
+          "音声付き再生エラー:",
+          error
+        );
+
+      }
+
+    }
+
+
+    // PC
+
+    document.body.addEventListener(
+      "click",
+      enableSound,
+      { once: true }
+    );
+
+
+    // スマホ
+
+    document.body.addEventListener(
+      "touchstart",
+      enableSound,
+      {
+        once: true,
+        passive: true
+      }
+    );
+
+
+    // =========================================
+    // 動画の状態確認
+    // =========================================
+
+    video.addEventListener(
+      "loadeddata",
+      () => {
+
+        console.log(
+          "動画読み込み完了"
+        );
+
+        console.log(
+          "動画サイズ:",
+          video.videoWidth,
+          "x",
+          video.videoHeight
+        );
+
+      }
+    );
+
+
+    video.addEventListener(
+      "error",
+      () => {
+
+        console.error(
+          "動画読み込みエラー:",
+          video.error
+        );
+
+      }
+    );
+
+
+    // =========================================
+    // AR Scene読み込み完了
+    // =========================================
+
+    const scene =
+      document.querySelector("a-scene");
+
+
+    scene.addEventListener(
+      "loaded",
+      () => {
+
+        console.log(
+          "A-Frame / MindAR 読み込み完了"
+        );
+
+      }
+    );
+
+  </script>
 
 </body>
 </html>
